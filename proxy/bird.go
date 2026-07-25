@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"unicode"
 )
 
 const MAX_LINE_SIZE = 1024
@@ -74,12 +75,24 @@ func isBirdCommandAllowed(query string) bool {
 	return false
 }
 
+func stripControlChars(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // Handles BIRDv4 queries
 func birdHandler(httpW http.ResponseWriter, httpR *http.Request) {
 	query := string(httpR.URL.Query().Get("q"))
 	if query == "" {
 		invalidHandler(httpW, httpR)
 	} else {
+		// Drop control characters from the query before use.
+		query = stripControlChars(query)
+
 		// Check if command restriction is enabled
 		if setting.birdRestrictCmds {
 			if !isBirdCommandAllowed(query) {

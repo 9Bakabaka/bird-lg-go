@@ -311,6 +311,81 @@ func TestBirdHandlerWithRestrictedCommandConfigureForbidden(t *testing.T) {
 	assert.Equal(t, w.Code, http.StatusForbidden)
 }
 
+func TestStripControlChars(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no control chars", "show route for 1.2.3.4", "show route for 1.2.3.4"},
+		{"newline without space", "show route\nshow memory", "show routeshow memory"},
+		{"newline with space", "show route \nshow memory", "show route show memory"},
+		{"carriage return without space", "show route\rshow memory", "show routeshow memory"},
+		{"carriage return with space", "show route \rshow memory", "show route show memory"},
+		{"tab without space", "show route\tshow memory", "show routeshow memory"},
+		{"tab with space", "show route \tshow memory", "show route show memory"},
+		{"null byte", "show\x00route", "showroute"},
+		{"bel and del", "show\x07route\x7f", "showroute"},
+		{"multiple control chars", "a\nb\rc\td\x00e", "abcde"},
+		{"only control chars", "\n\r\t\x00", ""},
+		{"empty string", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, stripControlChars(tt.input), tt.want)
+		})
+	}
+}
+
+func TestBirdHandlerRestrictedStripsControlChars(t *testing.T) {
+	// Control characters are stripped before the query reaches BIRD, so
+	// "show route \nshow memory" is sent as a single line "show route show memory".
+	server := BirdServer{
+		t:             t,
+		expectedQuery: "show route show memory",
+		response:      "Mock Response",
+		injectError:   "",
+	}
+
+	server.Listen()
+	go server.Run()
+	defer server.Close()
+
+	setting.birdSocket = server.socket
+	setting.birdRestrictCmds = true
+
+	r := httptest.NewRequest(http.MethodGet, "/bird?q="+url.QueryEscape("show route \nshow memory"), nil)
+	w := httptest.NewRecorder()
+	birdHandler(w, r)
+
+	assert.Equal(t, w.Code, http.StatusOK)
+	assert.Equal(t, w.Body.String(), "Mock Response\n")
+}
+
+func TestBirdHandlerUnrestrictedStripsControlChars(t *testing.T) {
+	// Stripping also applies when command restriction is disabled.
+	server := BirdServer{
+		t:             t,
+		expectedQuery: "show route show memory",
+		response:      "Mock Response",
+		injectError:   "",
+	}
+
+	server.Listen()
+	go server.Run()
+	defer server.Close()
+
+	setting.birdSocket = server.socket
+	setting.birdRestrictCmds = false
+
+	r := httptest.NewRequest(http.MethodGet, "/bird?q="+url.QueryEscape("show route \nshow memory"), nil)
+	w := httptest.NewRecorder()
+	birdHandler(w, r)
+
+	assert.Equal(t, w.Code, http.StatusOK)
+	assert.Equal(t, w.Body.String(), "Mock Response\n")
+}
+
 func TestBirdHandlerWithRestrictionDisabled(t *testing.T) {
 	server := BirdServer{
 		t:             t,
