@@ -155,6 +155,24 @@ func TestWhoisHostProcessMalformedCommand(t *testing.T) {
 	}
 }
 
+func TestWhoisHostProcessRejectsLeadingDash(t *testing.T) {
+	setting.whoisServer = "/bin/sh -c \"echo Mock Result\""
+
+	// A normal target still reaches the binary.
+	control := whois("AS6939")
+	if control != "Mock Result\n" {
+		t.Errorf("control whois(AS6939) = %q, want %q", control, "Mock Result\n")
+	}
+
+	// Targets beginning with "-" are rejected.
+	for _, target := range []string{"-", "-n", "-x", "--verbose", "-opt value"} {
+		result := whois(target)
+		if result != "Invalid target.\n" {
+			t.Errorf("whois(%q) = %q, want %q", target, result, "Invalid target.\n")
+		}
+	}
+}
+
 func TestWhoisHostProcessError(t *testing.T) {
 	setting.whoisServer = "/nonexistent"
 	result := whois("AS6939")

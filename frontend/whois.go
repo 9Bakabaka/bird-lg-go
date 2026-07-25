@@ -31,6 +31,11 @@ func whois(s string) string {
 		return ""
 	}
 
+	// A leading "-" is not part of any valid whois target (host/IP/AS/prefix).
+	if strings.HasPrefix(s, "-") {
+		return "Invalid target.\n"
+	}
+
 	if strings.HasPrefix(setting.whoisServer, "/") {
 		args, err := shlex.Split(setting.whoisServer)
 		if err != nil {
